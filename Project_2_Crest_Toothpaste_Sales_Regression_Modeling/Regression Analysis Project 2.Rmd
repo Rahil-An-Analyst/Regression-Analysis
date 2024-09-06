@@ -1,0 +1,585 @@
+---
+title: "Regression Analysis Project 2"
+subtitle: "Regression Analysis of Crest Toothpaste Sales: Identifying Key Predictors and Developing a Reduced Model"
+author: "Shaikh Mohammad Rahil"
+date: "`June 02, 2023`"
+output: 
+  html_document: 
+    toc: true
+  pdf_document: default
+toc-title: "Table of Contents"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r message=FALSE, warning=FALSE}
+library(GGally) # for ggpairs()
+library(car) # for ncvTest()
+library(stats) # for shapiro test
+library(leaps) # for regsubsets()
+library(DAAG) # Press()
+```
+
+#### General note:
+
+Where needed a significance level $\alpha=5\%$ is used, unless stated otherwise.
+
+## Introduction 
+
+In 1981, Proctor and Gamble wanted to determine their Crest toothpaste's future sales. Crest's advertising budget, Advertising ratio (Crest's advertising budget as a proportion of that for Colgate dental cream, Crest's closest competitor) and personal disposable income was collected for years between 1967 to 1980. 
+
+## Objective 
+
+Our aim for the Crest data collected over the years is to determine a regression model using one of these 3 factors that determines Crest's sales. This is to be achieved by fitting a model using the 3 predictor variables and eliminating any insignificant variables from the model by analyzing their coefficients. 
+
+## Read Data
+
+```{r}
+# Raw Crest data from pdf
+CrestRawdata = data.frame(Year = seq(from=1967, to =1980),
+                   CrestSales = c(105000,105000,121600,113750,113750,128925,142500,126000,162000,191625,189000,210000,224250,245000),
+                   CrestBudget = c(16300,15800,16000,14200,15000,14000,15400,18250,17300,23000,19300,23056,26000,28000),
+                   Ratio = c(1.25,1.34,1.22,1.00,1.15,1.13,1.05,1.27,1.07,1.17,1.07,1.54,1.59,1.56),
+                   Income = c(547.9,593.4,638.9,695.3,751.8,810.3,914.5,998.3,1096.1,1194.4,1311.5,1462.9,1641.7,1821.7))
+
+# We don't need year column
+Crest <- CrestRawdata[,c(2,3,4,5)] 
+
+# Crest data in Y, X1, X2, X3 format
+Crest_data <- data.frame( y = Crest$CrestSales,
+                          x1 = Crest$CrestBudget,
+                          x2 = Crest$Ratio,
+                          x3 = Crest$Income) 
+
+```
+
+$Crest$ is our base data.   
+
+
+## Fit model
+
+Let's first fit a model for ***CrestSales*** Y directly using the 3 variables ***CrestBudget*** X1, ***Ratio*** X2 and ***Income*** X3 using the lm(). 
+
+```{r}
+crestfit1= lm(CrestSales~ CrestBudget+Ratio+Income, data=Crest)
+summary(crestfit1)
+```
+
+The regression model using all 3 predictors is significant as p-value (7.537e-08) is less than 0.05 significance level. The Adjuster R-squared suggests 95.98% variability in ***CrestSales*** is explained by the model with all 3 predictors, ***Crest Budget***, ***Ratio*** and ***Income***. <br />
+
+The fitted model using all the 3 variables is <br />
+$$\hat y= 34104.559 + 3.746x_1 - 30046.343*x_2 + 85.926*x_3+\varepsilon$$ 
+$$or$$ 
+$$E(\hat y)= 34104.559 + 3.746x_1 - 30046.343x_2 + 85.926x_3$$ 
+
+## Is the model using all the predictors significant?
+
+To check if the linear model for Crest Sales $Y$ using all the predictors is significant, We need to perform significance test on the regression. Significance test using F-statistic or P-value statistic using ANOVA table will be performed on the regression. Lets state the hypothesis for the significance test, <br />
+
+Null hypothesis; $H_0$: $\beta_1$ = 0, $\beta_2$ = 0, $\beta_3$ = 0 <br />
+Alternate hypothesis; $H_1$: $\beta_1 \not = 0$, $\beta_2 \not = 0$, $\beta_3 \not = 0$. <br />
+
+Lets generate Anova table using anova(),
+
+```{r}
+CrestANOVA <- anova(crestfit1)
+CrestANOVA
+```
+We cannot rely on this output as we need to all the regressors together to test significance of regression. We need to sum up the predictors and calculate the p value for them as shown below,
+
+```{r}
+# Manually
+regression<- CrestANOVA$`Sum Sq`[1]+ CrestANOVA$`Sum Sq`[2]+ CrestANOVA$`Sum Sq`[3]
+Mean_Sq<-regression/(CrestANOVA$Df[1]+CrestANOVA$Df[2]+CrestANOVA$Df[3])
+F_value<-Mean_Sq/CrestANOVA$`Mean Sq`[4]
+pf(F_value, 3, CrestANOVA$Df[4], lower.tail = FALSE)
+
+# Using anova()
+Crestlm.fit<-lm(CrestSales~1,Crest) 
+anova(Crestlm.fit,crestfit1)
+```
+Since the p-value (7.537e-08) is $<$ $0.05$, the regression is significant.
+
+### Conclusion of significance test for regression :
+
+To answer the question, **Is the model using all the predictors significant?** 
+
+**Yes**, the regression is significant with p-value of 7.537e-08 and large F-score.
+
+
+## From the output, which variables are important?
+
+```{r}
+summary(crestfit1)
+```
+
+We have seen from the summary(crestfit1) that coefficient of Income is significant for Y(Crest Sales) at 5% significance level and coefficients of ***Ratio*** and ***Crest Budget*** are insignificant.
+Thus, Only ***Income*** predictor/variable is important from the model summary statistics. Also, note the intercept term is insignificant.
+
+Lets test the significance of these 3 variables by performing T-Test on the coefficients,
+
+### Significance test for coefficients B1, B2 and B3 of variables Crest budget X1, Ratio X2 and Income X3
+
+We use t-test to test significance of coefficients. The Test statistic is given by, $t = \frac {\hat{\beta_j} - \beta_j} {se\left(\hat{\beta_j}\right)}$ where j indicate regressor variables (3 in our case). We reject $H_0$ if $|t|$ \> $t_{\alpha/2, n-p}$ (where p is the number of parameters, k+1) or by p-value. (Note, j=1 to k. p = k+1)
+
+**For $\beta_1$ :**
+
+For the coefficient B1 of ***Crest Budget*** the hypothesis for the test are, <br /> 
+Null hypothesis: $H_0$ : $\beta_1$ = 0  <br /> 
+Alternate hypothesis: $H_a$ : $\beta_1 \not = 0$ <br />
+
+The $|t|$-critical for 2 tailed t-test with n-2 DF is 2.228139,
+```{r}
+qt(p = .025, df = length(Crest$CrestBudget) - 3 - 1)
+```
+From the summary statistics, the t-statistic value (1.896) is closer to 0 than the t-critical value (2.228139), hence the null hypothesis is not rejected. Thus, the $H_0$ is true. Thus, the coefficient $\beta_1$ is **insignificant** for the regression.
+
+**For $\beta_2$ :**
+
+For the coefficient B2 of ***Ratio*** the hypothesis for the test are, <br /> 
+Null hypothesis: $H_0$ : $\beta_2$ = 0 <br /> 
+Alternate hypothesis: $H_a$ : $\beta_2 \not = 0$ <br />
+
+the t-statistic value (1.932) is closer to 0 than the t-critical value (2.228139), hence null hypothesis is not rejected. Thus, the $H_0$ is true. Thus, the constant $\beta_0$ is **insignificant** for the regression.
+
+**For $\beta_3$ :**
+
+For the coefficient B2 of ***Income*** the hypothesis for the test are, <br /> 
+Null hypothesis: $H_0$ : $\beta_3$ = 0  <br /> 
+Alternate hypothesis: $H_a$ : $\beta_3 \not = 0$ <br />
+
+the t-statistic value (4.797) is farther from 0 than the t-critical value (2.228139), hence the null hypothesis is rejected. Thus, the $H_a$ is true. Meaning, the coefficient $\beta_3$ is not zero. Thus, there is a **significant** coefficient $\beta_3$ for the regression.
+
+### Significance Test for Intercept
+
+For the intercept $\beta_0$ the hypothesis for the test are, <br /> 
+Null hypothesis: $H_0$ : $\beta_0$ = 0  <br /> 
+Alternate hypothesis: $H_a$ : $\beta_0 \not = 0$ <br />
+
+the t-statistic value (1.314) is closer to 0 than the t-critical value (2.228139), hence null hypothesis is not rejected. Thus, the $H_0$ is true. Thus, the intercept $\beta_0$ is **insignificant** for the regression.
+
+### Conclusion of significance test for coefficients of variables :
+
+To answer the question, **From the output, which variables are important?**
+
+From the results of significance test for coefficients, Only $\beta_3$ is significant. That is, only Income variable is a significant predictor of the response term, Crest Sales Y in the linear model.
+The other 2 variables, ***Crest Budget*** and ***Ratio*** are insignificant in the model.
+
+
+## Are the assumptions governing the residuals satisfied? Which of these assumptions have been violated?
+
+Lets perform Residual Analysis to check if any model assumptions have been violated.
+
+The estimator error (or residual) is defined by: <br />
+
+$\hat{\epsilon_i}$ = $Y_i$ - $\hat{Y_i}$ (i.e. observed value less -
+trend value)
+
+Residual checks are done by plotting error/residual plots which will
+show up the following problems:
+
+-   1. Residuals vs Fitted to check Linearity and Randomness and zero mean
+-   2. Normal Q-Q to check normality 
+-   3. Scale-Location to check Homoscedasticity)
+-   4. Residuals vs Leverage to check for outliers
+
+``` {r}
+par(mfrow=c(2,2))
+plot(crestfit1)
+```
+
+
+**1. Residuals vs Fitted**
+
+This plot shows if residuals($\epsilon_i$) have non-linear patterns. We find the residuals spread almost equally around the horizontal line without forming any distinct pattern. This is a good indication that we don’t have non-linear relationships. Thus, the residuals form linearity. Also, no distinct pattern indicates randomness of the residuals. Also, since the horizontal red line is almost at the 0 level, we can say that the mean of residuals/errors is 0, that is $E(\epsilon_i) = 0$.
+
+**2. Normal Q-Q**
+
+This plot shows if residuals are normally distributed. It is necessary that the errors be normally distributed as we are carrying out significance tests. The residuals follow a straight line mostly (except for observation number 3,8 and 12 which deviate near the tails). Residuals lining well on the straight dashed line indicate linearity. Since the residuals are almost perfectly aligned in a linear fashion, it is fair to say that the residuals are normally distributed.
+
+**3. Scale-Location**
+
+This plot shows if residuals are spread equally along the ranges of predictors, hence indicating equal variance or homoscedasticity. We see an almost horizontal line with equally (randomly) spread points. With the exception of observation number 3,8 and 12 (show higher variation than other data points). All the other residuals obey homoscedasticity (or equal variance).
+
+Although the plots imply linearity, randomness, homoscedasticity, etc. it is difficult to judge the residual’s behavior with certainty from the plots. So, we need to test the assumptions statistically.
+
+**1- Non-constant error variance test** <br />
+
+$H_0$: Errors have a constant variance <br /> 
+$H_1$: Errors have a non-constant variance <br />
+
+```{r}
+ncvTest(crestfit1) #library(car)
+```
+
+Since the p-value is $>$ $0.05$, we do not enough evidence to reject $H_0$. This implies that constant error variance assumption is not violated.
+
+**2- Test for Normally Distributed Errors** <br />
+
+$H_0$: Errors are normally distributed <br /> 
+$H_1$: Errors are not normally distributed <br />
+
+```{r}
+shapiro.test(crestfit1$residuals) # library(stats)
+```
+
+Since the p-value is < 0.05 we reject $H_0$. This implies that normality error assumption is **violated**.
+
+**3- Test for Autocorrelated Errors** <br />
+
+$H_0$: Errors are uncorrelated <br /> 
+$H_1$: Errors are correlated <br />
+
+```{r}
+durbinWatsonTest(crestfit1) # library(car)
+```
+
+Since the p-value is $>$ $0.05$, so we do not have enough evidence to reject $H_0$. This implies that uncorrelated error assumption is not violated.
+
+```{r}
+acf(crestfit1$residuals)
+```
+
+Since no vertical bars exceed the Confidence limit (dashed line), no significant correlations exist between the errors. 
+
+**4. Residuals vs Leverage**
+
+This plot helps us to find influential cases (i.e., subjects) if any. We have noticed observations 3,8 and 12 form exceptions. But do they influence the regression results significantly and form outliers? We notice no observations situated outside the cooks distance. Hence, the regression results wont be altered by any outliers.
+
+## Conclusion of residual analysis:
+
+To answer the question **Are the assumptions governing the residuals satisfied? Which of these assumptions have been violated?**
+
+- Assumption 1: The error terms are randomly distributed and thus show linearity: *Not violated*
+- Assumption 2: The mean value of E is zero (zero mean residuals): *Not violated*
+- Assumption 3: The variance of E is constant, i.e. the errors are homoscedastic: *Not violated*
+- Assumption 4: The error terms are independently distributed, i.e. they are not autocorrelated: *Not violated*
+- Assumption 5: The errors are normally distributed. **violated**
+
+Thus, Normality of residuals/error terms is not satisfied.
+
+## Highlight and check possible problems (such as multicollinearity, ... )
+
+### Check for Multicollinearity
+
+Lets check using scatter plot and correlation coefficients between the predictors.
+
+```{r}
+ggpairs(data = Crest, columns = c(1,2,3,4))
+```
+
+As shown in the matrix above, <br />
+- ***Crest Budget*** and ***Ratio*** are **strongly** correlated by $0.771$ r (correlation coefficient) <br />
+- ***Income*** and ***Ratio*** are correlated by $0.615$ r <br />
+- ***Crest Budget*** and ***Income*** pair of predictors are **strongly** correlated by $0.919$ r <br />
+
+Thus there is indication of multicollinearity.
+
+To test multicollinearity statistically, we should also use the Variance Inflation Factor ($VIF$). VIF can be viewed as the factor by which the variance of the coefficient is increase due to multicollinearity.
+
+```{r}
+vif(crestfit1)
+```
+VIFs > 5 to 10 indicate significant multicollinearity. We can see ***CrestBudget*** with VIF $11.421674$ is significant in multicollinearity. 
+
+
+## Model building comparing forward, backward and stepwise regression procedures. (Model selection)
+
+lets begin by defining the full model with all 3 variables and null model with none of the variables, namely ***Crestfull*** and ***crestnull***.
+
+```{r}
+# Full model contains all the 3 variables 
+Crestfull=lm(CrestSales~., data=Crest)
+
+# null model contains no variable
+Crestnull=lm(CrestSales~1, data=Crest)
+```
+
+### Using AIC scores
+
+#### Forward selection using AIC values -
+
+```{r}
+step(Crestnull, scope=list(lower=Crestnull, upper=Crestfull), direction="forward")
+```
+
+Forward selection using AIC scores iterates the null model 3 times adding Income (AIC = 260.27), CrestBudget (AIC = 260.19) and Ratio (AIC = 259.96) respectively to give the resulting model with least AIC score. This technique suggests all 3 variables are significant with Income the most significant and Ratio the least. Null model has worst AIC score of 302.64 and full model has best AIC score of 259.96.
+
+
+#### Backward selection using AIC values -
+
+```{r}
+step(Crestfull, data=Crest, direction="backward")
+```
+The backward elimination/selection using AIC scores tells us that from the full model with all 3 variables gives the least AIC score of 259.96 and hence is the best. 
+
+
+#### stepwise regression using AIC values -
+
+```{r}
+step(Crestnull, scope = list(upper=Crestfull), data=Crest, direction="both")
+```
+
+Stepwise regression, a combination of foreward and backward process, using AIC after 4 iterations of addition and rejection of variables suggests the best model to be the full model.
+
+#### Model as per AIC scores -
+
+As best model is the full model, our model remains the same, <br />
+
+$\hat y= 34104.559 + 3.746x_1 - 30046.343*X2 + 85.926*X3+\varepsilon$ or <br />
+$E(\hat y)= 34104.559 + 3.746x_1 - 30046.343*X2 + 85.926*X3$
+
+
+### Using F-test 
+
+#### Forward selection based on Manual F-test
+
+We begin with the null model and add the most significant variable one by one to get lowest AIC scores for the resulting model,
+
+```{r}
+add1(Crestnull, scope =Crestfull, test = "F")
+```
+***Income*** is the most significant variable with the highest F-value or lowest p-value of 1.268e-09, hence we add Income to null model,
+
+```{r}
+add1(update(Crestnull, ~ . +Income), scope = Crestfull, test = "F")
+```
+Now no variable is significant at p < 0.05 as F-values are small. Hence manual F-test based forward selection suggests a model with only ***Income*** as the predictor variable.
+
+#### Backward selection based on Manual F-test
+
+We begin with the full model and remove the least significant variable one by one to get lowest AIC scores for the resulting model,
+
+```{r}
+drop1(Crestfull,test="F")
+```
+
+Ratio is the least significant with p-value 0.2180656 with lowest F-value. Remove ***Ratio*** from the model.
+
+```{r}
+drop1(update(Crestfull, ~ . -Ratio), test = "F")
+```
+
+Now CrestBudget is the least significant at p value 0.2119796 with lowest F-value. Remove ***CrestBudget*** from the model.
+
+```{r}
+drop1(update(Crestfull, ~ . -Ratio-CrestBudget), test = "F")
+```
+Now remaining 1 variable, ***Income*** is significant at p < 0.05 with high F-value.
+
+#### Best Model as per F-scores -
+
+The forward and backward process using F-scores suggests only ***Income*** variable is a significant predictor of response, Crest Sales.
+
+Since models built as per AIC and F-scores are different, lets use other statistics to substantiate a model. 
+
+### Check using R2, Adjusted R2, BIC and Mallow's Cp
+
+``` {r}
+regsubsets.out = regsubsets(CrestSales~., data=Crest, nbest=3) # library(leaps)
+summary.out <- summary(regsubsets.out)
+as.data.frame(summary.out$outmat)
+par(mfrow=c(1,2))
+plot(regsubsets.out, scale="r2")
+plot(regsubsets.out, scale="adjr2")
+```
+
+``` {r}
+par(mfrow=c(1,2))
+plot(regsubsets.out, scale="bic")
+plot(regsubsets.out, scale="Cp")
+```
+
+- Using $R^2$ and Adjusted $R^2$ statistics, the best regression model (see first line) from the plots has all the 4 coefficients in it. Crest Budget and Ratio variables are not consistent among the 2nd best, 3rd best, etc models (see 2nd line for each plot). Since we are investigating a model with 3 terms, the adjusted $R^2$ statistic is more reliable as adjusted $R^2$ statistic will not necessarily increase as additional terms are introduced into the model. Anyways, both give same conclusion. <br />
+- Using BIC and Mallow' $Cp$, the best regression model (see first line) from the plots has only Intercept and ***Income*** variable's coefficients as significant. Mallow' $Cp$ criterion is related to the MSE of the fitted value. Small $Cp$ values are desirable. <br />
+- These 4 plots tell us that Ratio variable alone is significant from the 3 variables. <br />
+
+### Conclusion of model building/selection:
+
+Although forward, backward and stepwise selection using AIC gives a model with all 3 variable as significant, the best model for our Crest data by forward and backward selection using 
+F-test has Income variable alone as significant. This model selection is backed by the model chosen using $R^2$, Adjusted $R^2$, BIC and Mallow's $Cp$ statistic. 
+
+
+## Fitting reduced model
+
+Lets fit reduced model for ***Crest Sales*** (Y) using ***Income*** (X3) variable alone,
+
+```{r}
+crestfit2<-lm(CrestSales~Income,Crest)
+summary(crestfit2)
+```
+The regression model using ***Income*** (X3) variable is significant as p-value (1.268e-09) is less than 0.05 significance level. The Adjuster R-squared suggests 95.45% variability in $CrestSales$ is explained by this model. <br />
+
+Compared to the full model, the reduced model is more significant (1.268e-09 vs 7.537e-08) but has slightly less Adjusted R-squared (95.45% vs 95.98%). 
+
+Reduced model is <br />
+$$\hat y= 36068.352 + 115.580X3 +\varepsilon$$
+$$or$$
+$$E(\hat y)= 36068.352 + 115.580X3$$
+
+## Check significance of reduced model
+
+We use F-statistic or P-value from ANOVA table to test significance of reduced regression model (Note, now the linear model is of 1 variable). The hypothesis are,
+
+Null hypothesis; $H_0$: $\beta_3$ = 0 <br />
+Alternate hypothesis; $H_1$: $\beta_3 \not = 0$. <br />
+
+```{r}
+CrestANOVA2 <- anova(crestfit2)
+CrestANOVA2
+```
+
+Since the p-value (1.268e-09) is $<$ $0.05$, the regression is significant.
+
+## Check if slope (B3) and constant are significant
+
+### Significance Test for Slope (B3)
+
+For the coefficient $\beta_3$ of ***Income*** X3 the hypothesis for the test are, <br /> 
+Null hypothesis: $H_0$ : $\beta_3$ = 0 <br /> 
+Alternate hypothesis: $H_a$ : $\beta_3 \not = 0$ <br />
+
+And the Test statistic:
+
+$t = \frac {\hat{\beta_j} - \beta_j} {se\left(\hat{\beta_j}\right)}$ 
+
+We reject $H_0$ if $|t|$ \> $t_{\alpha/2, n-p}$ or by p-value.
+
+The $|t|$-critical for 2 tailed t-test with n-p or n-k-1 DF is 2.178813,
+
+```{r}
+qt(p = .025, df = length(Crest$CrestBudget) - 1 - 1)
+```
+
+From the summary(crestfit2), the t-statistic value (16.537) is farther from 0 than the t-critical value (2.178813), hence the null hypothesis is rejected. The $H_a$ is true. Meaning, the coefficient $\beta_3$ is not zero. Thus, there is a **significant** coefficient $\beta_3$ for the regression.
+
+### Significance Test for Intercept
+
+For the intercept $\beta_0$ the hypothesis for the test are, <br /> 
+Null hypothesis: $H_0$ : $\beta_0$ = 0 <br /> 
+Alternate hypothesis: $H_a$ : $\beta_0 \not = 0$ <br />
+
+From the summary(crestfit2), the t-statistic value (4.669) is farther from 0 than the t-critical value (2.178813), hence the null hypothesis is rejected. The $H_a$ is true. Meaning. Thus, there is a **significant** intercept $\beta_0$ for the regression.
+
+### Residual analysis on reduced model
+
+
+``` {r}
+par(mfrow=c(2,2))
+plot(crestfit2)
+```
+
+**1. Residuals vs Fitted**
+
+- Horizontal red line is almost at the 0 level, thus mean of residuals/errors is 0, that is $E(\epsilon_i) = 0$.
+- Residuals spread almost equally around the horizontal line without forming any distinct pattern indicating linear relationships.
+- No distinct pattern indicates randomness of the residuals.
+
+**2. Normal Q-Q**
+
+- Residuals drift off near the tails (3,8,10), but all the other points are close to the normal line. Residuals may or may not be normally distributed. Need to perform statistical test.
+
+**3. Scale-Location**
+
+- Not much change in spread of residuals is seen along the range of predictors/fitted values (except 3,8,10) indicating homoscedasticity. 
+
+Although the plots imply linearity, randomness, homoscedasticity, etc. it is difficult to judge the residual’s behavior with certainty from the plots. So, we need to test the assumptions statistically.
+
+**1- Non-constant error variance test** <br />
+
+$H_0$: Errors have a constant variance <br /> 
+$H_1$: Errors have a non-constant variance <br />
+
+```{r}
+ncvTest(crestfit2) #library(car)
+```
+
+Since the p-value is $>$ $0.05$, we do not enough evidence to reject $H_0$. This implies that constant error variance assumption is not violated.
+
+**2- Test for Normally Distributed Errors** <br />
+
+$H_0$: Errors are normally distributed <br /> 
+$H_1$: Errors are not normally distributed <br />
+
+```{r}
+shapiro.test(crestfit2$residuals) # library(stats)
+```
+Since the p-value is > 0.05 we do not reject $H_0$. This implies that normality error assumption is not violated.
+
+**3- Test for Autocorrelated Errors** <br />
+
+$H_0$: Errors are uncorrelated <br /> 
+$H_1$: Errors are correlated <br />
+
+```{r}
+durbinWatsonTest(crestfit2) # library(car)
+```
+Since the p-value is $>$ $0.05$, so we do not have enough evidence to reject $H_0$. This implies that uncorrelated error assumption is not violated.
+
+```{r}
+acf(crestfit2$residuals)
+```
+
+Since no vertical bars exceed the Confidence limit (dashed line), no significant correlations exist between the errors. 
+
+**4. Residuals vs Leverage**
+
+This plot helps us to find influential cases (i.e., subjects) if any. We have noticed observations 3,8 and 10 form exceptions. But do they influence the regression results significantly and form outliers? We notice no observations situated outside the cooks distance. Hence, the regression results wont be altered by any outliers.
+
+## Conclusion of residual analysis:
+
+- Assumption 1: The error terms are randomly distributed and thus show linearity: *Not violated*
+- Assumption 2: The mean value of E is zero (zero mean residuals): *Not violated*
+- Assumption 3: The variance of E is constant, i.e. the errors are homoscedastic: *Not violated*
+- Assumption 4: The error terms are independently distributed, i.e. they are not autocorrelated: *Not violated*
+- Assumption 5: The errors are normally distributed. *Not violated*
+
+Thus, all assumptions are satisfied by the errors.
+
+
+## Final Analysis Conclusion
+
+The fitted models were full model (using Crest Budget, Ratio and Income) and reduced model (using Income alone). On testing these models as per $AIC$, $BIC$, $F$, $R^2$, Adjusted $R^2$ and Mallow's $Cp$ statistics, reduced model was selected. The reduced model was found to be significant (p-value = 1.268e-09) with significant slope $\beta_3$ (p-value = 1.27e-09) for the Income variable and significant intercept (p-value = 0.000542). From residual analysis on the reduced model, all assumptions were satisfied. Thus, though the model is efficient and forecasts, if generated, will be reliable.
+
+## Future Directions
+
+Since a model of good fit is obtained, forecasts can be generated using this model.
+
+## References
+
+PU (Purdue University) (2023) *Critical Values of the F-Distribution: $\alpha$ = 0.05*, accessed 8th May 2023, https://www.stat.purdue.edu/~lfindsen/stat511/F_alpha_05.pdf
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
