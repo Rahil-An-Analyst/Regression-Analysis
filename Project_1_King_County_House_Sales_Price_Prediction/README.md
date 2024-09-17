@@ -37,12 +37,12 @@ The best model identified is the Generalized Linear Model (GLM) with a gamma-dis
 
 ## How to Use
 - **Setup**: Requires R and relevant packages (`stats`, `MASS`).
-- **Usage**: Run `FinalProject.Rmd` in RStudio to generate the full analysis report. Ensure you download and update the location of the `kc_house_data.csv` in the Rmd before running.
+- **Usage**: Run `RegressionProject1.Rmd` in RStudio to generate the full analysis report. Ensure you download and update the location of the `kc_house_data.csv` in the Rmd before running.
 
 ## Files
 - `README.md`: This file.
-- `FinalProject.Rmd`: The R Markdown file containing code and analysis.
-- `FinalProject.html`: HTML report of the analysis.
+- `RegressionProject1.Rmd`: The R Markdown file containing code and analysis.
+- `RegressionProject1.html`: HTML report of the analysis.
 - `kc_house_data.csv`: The filtered dataset used for modeling.
 
 ## License
