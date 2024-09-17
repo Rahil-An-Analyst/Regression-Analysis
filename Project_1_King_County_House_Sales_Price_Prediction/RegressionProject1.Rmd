@@ -1,0 +1,1068 @@
+---
+title: "Regression Analysis Project"
+subtitle: "Comprehensive Regression Analysis of King County House Sales Data: Model Selection, Variable Selection, and Statistical Testing Across Linear, Logistic, Poisson, and Gamma GLM Models"
+author: "Shaikh Mohammad Rahil"
+date: "`September 06, 2024`"
+output: 
+  html_document: 
+    toc: true
+  pdf_document: default
+toc-title: "Table of Contents"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r message=FALSE, warning=FALSE}
+library(magrittr) #pipe operator
+library(car) # Anova()
+library(GGally) #ggpairs()
+library(lmtest) #lmtest()
+library(olsrr) # ols_step_best_subset()
+library(dplyr) # mutate()
+```
+
+#### General note:
+
+A significance level $\alpha=5\%$ is used.
+
+## Introduction
+
+The public records of home sales from May, 2014 through May, 2015 in the King County area, Washington State of USA is posted on Kaggle (2016) (also posted on GeoDa (2020)) with the intention of predicting house prices using regression.
+
+## Data Description/ Background information
+
+The dataset holds 21 columns and 21,613 records/rows of which a filtered data of 6 columns and 4,385 records will be used. Only 1 response variable exists, price. Out of many possible regressor variables, only 5 are chosen for simplicity. 
+
+The 6 columns used are price,	bedrooms,	bathrooms, sqft_living,	sqft_lot, and	floors where price is our response variable and the remaining 5 are regressors.
+
+**How was data filtered?**
+
+- Number of bedrooms is restricted to 1,2 and 3 from possible 0 to 10,11,33 bedrooms. <br />
+- Number of bathrooms is restricted to 1,2 and 3 from possible 0 to 8 bedrooms in increments of 0.25. <br />
+- Number of floors is restricted to 1,2 and 3 from possible 1 to 3.5  bedrooms in increments of 0.5. <br />
+
+Thus reducing the data count.
+
+**Column descriptions:**
+
+For all 21 columns, refer GeoDa (2020). For the chosen 6 columns, 
+
+**price** - Price of each home sold <br />
+**bedrooms** - Number of bedrooms <br />
+**bathrooms** - Number of bathrooms, where 0.5 accounts for a room with a toilet but no shower <br />
+**sqft_living** - Square footage of the apartments interior living space <br />
+**sqft_lot** - Square footage of the land space <br />
+**floors** - Number of floors <br />
+
+## Collection method described
+
+No collection method has been described other than for the zip codes of King County which were retrieved from King county GIS Open Data, GIS (2023). 
+
+The House Sales datasets are provided as direct csv downloads and can be downloaded from,
+
+Option 1: Direct download from Kaggle (2016)
+
+Option 2: Direct download from GeoDa (2020) webpage prepared by the Center for Spatial Data Science, CSDS (2020). Or, by navigating CSDS (2020) website. Open CSDS (2020) website, click on the *data* tab. Next, filter by *Housing* category and choosing *2014-2015 Home Sales in King County, WA*.
+
+
+## Objective
+
+Our aim for the House Sales data collected is to determine a relevant regression model that determines price of house sales using at least one of the 5 regressors. This is to be achieved by fitting different significant regression models through model selection and variable selection methods. Relevance of the finalized models in context with the housing data will be stated.
+
+## Read Data
+
+```{r}
+kc_house_raw <- read.csv("C:/Users/admin/Downloads/aa/kaggle/kc_house_data - Copy.csv") %>% dplyr::select(3:8) 
+print(paste("Row count of raw dataset -", nrow(kc_house_raw)))
+
+# Filter data. Only include 1,2 and 3 number of bedrooms, bathrooms and floors.
+kc_house <- kc_house_raw %>% dplyr::filter(bedrooms %in% c(1,2,3),bathrooms %in% c(1,2,3,1.00,2.00,3.00),floors %in% c(1,2,3,1.0,2.0,3.0)) 
+print(paste("Row count of finalized dataset -", nrow(kc_house)))
+head(kc_house)
+```
+
+## Identification of the response and the regressor variables. 
+
+For fitting linear regression model, the response is ***price*** and the regressor variables are ***bedrooms***, ***bathrooms***, ***sqft_living***, ***sqft_lot***, and ***floors*** each described as follows,
+
+y = price = Price of each home sold <br />
+x1 = bedrooms = Number of bedrooms <br />
+x2 = bathrooms =  Number of bathrooms <br />
+x3 = sqft_living = Square footage of the apartments interior living space <br />
+x4 = sqft_lot = Square footage of the land space <br />
+x5 = floors = Number of floors <br />
+
+Note, ***bedrooms***, ***bathrooms***, and ***floors*** are **categorical** variables each holding values 1,2 and 3. ***sqft_living*** and ***sqft_lot*** are **continuous** variables. Response, ***price*** is **continuous** as well.
+
+## Fit linear model
+
+Let’s first fit a model for ***price*** (y) with all 5 variables using the lm(). <br />
+
+```{r}
+full= lm(price ~ factor(bedrooms) + factor(bathrooms) + sqft_living + sqft_lot + factor(floors), data=kc_house)
+```
+
+## Discussion of possible relationships between variables and the relevance of the relationship in the context of the data.
+
+Lets see if the the 5 regressor variables have significant relationships between themselves. If present, we say the variables are correlated and there is presence of multicollinearity. Multicollinearity impacts the estimates (increases variance/covariance of least square estimates) of the individual regression coefficients. Multicollinearity in the data can be checked using the correlation coefficients or using the statistic, Variance Inflation Factor (VIF). <br />
+
+In **context** of the kc_house data, we expect correlations between all the 5 variables. For example, generally, we expect houses with more floors to have more bedrooms and bathrooms. When size of the lot more, generally, we expect size of the living area to be more and vice versa. Similar statements can be made using every other variable pair. If the relationships are found to be significant or **relevant**, then we can introduce interactions between the variables as additional parameter of the fitted model. Lets now check presence of multicollinearity,
+
+Lets plot the correlation coefficients between each predictor, <br />
+
+```{r}
+ggpairs(data = kc_house, columns = c(1,2,3,4,5,6), progress = FALSE) # library(GGally)
+```
+
+As shown in the matrix above, <br />
+- **bedrooms** and **bathrooms** are correlated by 0.316 (correlation coefficient). **bedrooms** and **sqft_living** by 0.422. <br />
+- **bathrooms** and **sqft_living** by 0.645. **bathrooms** and **floors** by 0.479. <br />
+- **sqft_living** and **floors** by 0.305. <br />
+- All other correlations are negligible. <br />
+Overall, there is indication of multicollinearity. <br />
+
+To test multicollinearity statistically, we can use the Variance Inflation Factor (VIF). VIF can be viewed as the factor by which the variance of the coefficient is increase due to multicollinearity.
+
+```{r}
+car::vif(full) 
+```
+
+Since we have categorical variables, Generalized Variance Inflation Factors (GVIF) are given. Also, standardized GVIF (GVIF^(1/(2xDf))) are given. Since the GVIF is < 5, **multicollinearity is not significant**  (VIF between 5 to 10 is considered significant).
+
+
+## Descriptive statistics and Relative graphs, justifications and comments
+
+Lets get the summary statistics of the kc_house dataset, <br />
+
+```{r}
+summary(kc_house)
+sd(kc_house$price) # Standard deviation
+```
+**For response, price :** <br />
+
+Since we are generating regression model which estimates the response, ***price***, lets focus on price's statistics. <br />
+
+***mean and median :*** <br />
+Since the mean and median are not close, the distribution is likely to be skewed. <br />
+Mean of price of house sold is 333,000 USD.
+Median is is 371,431 USD.
+
+***max and min :*** <br />
+Since the max (3,100,000) is farther from mean (371,431) than min (78,000), the distribution will be right-skewed. <br />
+
+***standard deviation :*** <br />
+Standard deviation of 193,926 USD suggests the data is spread quite a lot in relation to the mean price. <br />
+
+Now lets plot the histogram of prices of the house sold and see if the summary statistics are justified, <br />
+
+```{r}
+hist(kc_house$price, xlab = 'Price of house sold (USD)', main = "Histogram of sold house's price" )
+```
+As we expected, the spread/distribution of the ***price*** response is right skewed. <br />
+
+**Comment:** Transformation/s (box-cox) on the response variable might be necessary to satisfy normality assumption required by Least Square parameter estimation techniques for the linear model fitting. <br />
+
+
+**For regressor variables :** <br />
+
+Lets look at the scatter plot between response (price) and the continuous variables, sqft_living and sqft_lot. <br />
+
+```{r}
+par(mfrow=c(1,2))
+plot(kc_house$price, kc_house$sqft_lot, 
+     xlab = "Size of lot",ylab = "Price of house sold (USD)",
+     main="Price vs lot size")
+
+plot(kc_house$price, kc_house$sqft_living, 
+     xlab = "Size of living area",ylab = "Price of house sold (USD)",
+     main="Price vs living area size")
+
+print("Correlation coefficients between, ")
+print(paste("Price and lot size is :", cor(kc_house$price,kc_house$sqft_lot)))
+print(paste("Price and living area is :", cor(kc_house$price,kc_house$sqft_living)))
+print(paste("Price and number of bedrooms is :", cor(kc_house$price,kc_house$bedrooms)))
+print(paste("Price and number of bathrooms is :", cor(kc_house$price,kc_house$bathrooms)))
+print(paste("Price and number of floors is :", cor(kc_house$price,kc_house$floors)))
+```
+From the 2 scatter plots, as size of lot or living area increases, price increases. Thus, suggesting linear relationship. <br />
+
+Summarizing the outputs above, <br />
+- A moderate positive linear relationship (0.54) exists between response, ***price*** (y) and regressor, ***sqft_living*** (x3). <br />
+- A low positive linear relationship (0.04) exists between response, ***price*** (y) and regressor, ***sqft_lot*** (x3). <br />
+- Positive correlation coefficients, 0.09, 0.38 and 0.26 for the categorical regressors, number of ***bedrooms*** (x1), ***bathrooms*** and ***floors*** suggest linear relationship with response as well. (Scatter plot not shown for simplicity) <br />
+
+Thus, since all the regressors exhibit linear relationship with the response variable, fitting a linear regression model seems apt.
+
+## Model 1 (Linear model) 
+
+### Fit $full$ model
+
+Recall the fitted linear regression model, **full**, where price is the continuous response and sqft_living and sqft_lot are continuous predictors. Bedrooms, bathrooms and floors are categorical variables and hence factorized when feeding in the model. 
+
+```{r}
+full= lm(price ~ factor(bedrooms) + factor(bathrooms) + sqft_living + sqft_lot + factor(floors), data=kc_house)
+summary(full) 
+```
+
+Summary() suggests Linear Regression model **full is significant** at 5% significance level as p-value (< 2.2e-16). The R-squared suggests **33.38%** variability in ***price*** is explained by the model.
+
+The fitted model equation using all the 5 variables is, <br />
+$$\hat y= 126061.8 - 3973.2*bedrooms2 - 69077.7*bedrooms3 + 348.1*bathrooms2 + 70825.4*bathrooms3 - 215.1*sqft_living - 0.2*sqft_lot + 50222*floors2 + 55727.1*floors3 + \varepsilon$$
+$$or$$
+$$E(\hat y)= 126061.8 - 3973.2*bedrooms2 - 69077.7*bedrooms3 + 348.1*bathrooms2 + 70825.4*bathrooms3 - 215.1*sqft_living - 0.2*sqft_lot + 50222*floors2 + 55727.1*floors3$$
+
+### Graphical and statistical tests of assumptions for $full$ model (Residual Analysis)
+
+That is, residual analysis to test model assumptions. <br />
+
+Lets perform ***Residual Analysis*** to check if any model assumptions have been violated. 
+
+The estimator error (or residual) is defined by: <br />
+
+$\hat{\epsilon_i}$ = $Y_i$ - $\hat{Y_i}$ (i.e. observed value less -
+trend value)
+
+Residual checks are done by plotting error/residual plots which will
+show up the following problems:
+
+  1. Residuals vs Fitted to check Linearity and Randomness and zero mean
+  2. Normal Q-Q to check normality 
+  3. Scale-Location to check Homoscedasticity
+  4. Residuals vs Leverage to check for outliers
+
+Residual plots:
+
+``` {r}
+par(mfrow=c(2,2))
+plot(full)
+```
+**1. Residuals vs Fitted**
+
+- Horizontal red line is not close to the 0 level, thus mean of residuals/errors might not be 0 . Lets quickly calculate mean of residuals, <br />
+
+```{r}
+mean(rstudent(full))
+```
+
+Mean is very close to zero. Hence, **zero mean assumption is not violated**, that is $E(\epsilon_i) = 0$ <br />
+
+- Residuals spread almost equally around the horizontal line without forming any distinct pattern **indicating linear** relationships. <br />
+- No distinct pattern **indicates randomness** of the residuals. <br />
+
+**2. Normal Q-Q**
+
+- Residuals drift off near the tails, especially at the upper tail. All the other points are close to the normal line. Residuals may or may not be normally distributed. Need to perform statistical test.
+
+**3. Scale-Location**
+
+- Increase in the spread of residuals is seen along the range of predictors indicating homoscedasticity might be violated. 
+
+It is difficult to judge the residual’s behavior with certainty from the plots. So, we need to test the assumptions statistically.
+
+**1- Non-constant error variance test** <br />
+
+$H_0$: Errors have a constant variance <br /> 
+$H_1$: Errors have a non-constant variance <br />
+
+```{r}
+ncvTest(full) #library(car)
+```
+
+Since the p-value is $<$ $0.05$, we have enough evidence to reject $H_0$. This implies that constant error variance assumption is **violated** by the reduced model.
+
+**2- Test for Normally Distributed Errors** <br />
+
+$H_0$: Errors are normally distributed <br /> 
+$H_1$: Errors are not normally distributed <br />
+
+```{r}
+shapiro.test(full$residuals) # library(stats)
+```
+Since the p-value is < 0.05 we reject $H_0$. This implies that normality error assumption is **violated**.
+
+**3- Test for Autocorrelated Errors** <br />
+  
+$H_0$: Errors are uncorrelated <br /> 
+$H_1$: Errors are correlated <br />
+  
+```{r}
+durbinWatsonTest(full) # library(car)
+```
+Since the p-value is $>$ $0.05$, so we do not have enough evidence to reject $H_0$. This implies that uncorrelated error assumption is **not violated**.
+
+```{r}
+dwtest(formula = full,  alternative = "two.sided") #library(lmtest)
+```
+Since the p-value obtained from the Durbin-Watson test is not significant (d = 1.9452,p = 0.06847), we reject the null hypothesis. This implies that uncorrelated error assumption is **not violated**.
+
+```{r}
+acf(full$residuals)
+```
+
+Significant correlation at lag 0 indicate autocorrelation or error terms with themselves. We are interested in autocorrelation at lags 1,2,3..etc. Although few bars exceed the significance level (dashed blue line), they are mostly late lags (lag 6, 19, 25) or are borderline significant. Thus, uncorrelated error assumption is not violated.
+
+**4. Residuals vs Leverage**
+  
+This plot helps us to find influential cases (i.e., subjects) if any. We have noticed many observations form exceptions. But do they influence the regression results significantly
+and form outliers?
+  
+We notice no observations situated outside the **0.5** (or **1**) dashed line, cook’s distance of 0.5 (or 1). This means, no observations have significant influence on the regression results. Hence, no influential points are found for the full regression.
+
+**Summarizing residual analysis on $full$ model:**
+
+Assumption 1: The error terms are randomly distributed and thus show linearity: Not violated <br /> 
+Assumption 2: The mean value of E is zero (zero mean residuals): Not violated <br /> 
+Assumption 3: The variance of E is constant, i.e. the errors are homoscedastic: ***violated*** <br /> 
+Assumption 4: The error terms are independently distributed, i.e. they are not autocorrelated: Not violated <br /> 
+Assumption 5: The errors are normally distributed. ***Violated*** <br /> 
+
+
+Since the normality and homoscedasticity are violated, we need to apply appropriate **transformations**. Before that, lets see if any **subset** of the full have a better fit.
+
+### Compare subsets of $full$ model (Model selection) 
+
+**Using ols_step_best_subset():**
+
+Best subsets of regression models with interactions are obtained using ols_step_best_subset(full), <br /> 
+
+```{r}
+best_sub<-ols_step_best_subset(full) # library(olsrr)
+best_sub
+plot(best_sub) 
+```
+
+Using the plots, best model as per,
+
+- Adjusted R2 (highest) is model 5 (0.3326)
+- Cp (least) is model 5
+- AIC (least) is model 2
+- SBIC (least) is model 5 
+- SBC (least) is model 5 (also known as BIC)
+- Other statistics such as MSEP, FPE, HSP, APC **all** suggest model 5 is best.
+
+Thus, model 5 or the $full$ model having all 5 predictors is the best model as per multiple statistical measures.
+
+**Using ols_step_all_possible():**
+
+All possible set of models having different combinations of predictors is given by ols_step_all_possible(full), <br />
+
+```{r, warning=FALSE}
+all_models<-ols_step_all_possible(full)
+plot(all_models)
+```
+
+Using the plots above, again, $full$ model is best as per Adjusted R2, R2, Cp, AIC, SBIC and BIC statistics.
+
+### Transformation 
+
+As the response, ***price*** is not normally distributed as per the shapiro test (also seen from histogram which is right skewed), lets check if box-cox transformation helps improve normality. Lets calculate lambda ($\lambda$) to know which transformation is best for our response variable, 
+
+```{r}
+bc <- MASS::boxcox(full)
+trans <- bc$x[which.max(bc$y)]
+lambda <- round(trans,1)
+lambda
+```
+As $\lambda$ (0.1) is close to 0, log transformation can be chosen. Lets fit the log-transformed model ($model1$) and check the assumptions,
+
+### Fit transformed model, $model1$
+
+Linear model using all 5 predictors with response, price, log-transformed is,
+
+```{r}
+model1 = lm(log(price) ~ factor(bedrooms) + factor(bathrooms)	+ sqft_living +	sqft_lot + factor(floors), data=kc_house) #best model till now
+summary(model1)
+```
+The log-transformed $model1$ is significant as p-value (< 2.2e-16). The R-squared suggests **28.19%** variability in ***log(price)*** is explained by the model. The model equation is,
+
+$$log(\hat y)= 12.14 + 0.0389*bedrooms2 - 0.1155*bedrooms3 + 0.0528*bathrooms2 + 0.064*bathrooms3 - 4.608e-04*sqft_living - 4.176e-07*sqft_lot + 0.1024*floors2 + 0.2302*floors3 + \varepsilon$$
+$$or$$
+$$E(log(\hat y))= 12.14 + 0.0389*bedrooms2 - 0.1155*bedrooms3 + 0.0528*bathrooms2 + 0.064*bathrooms3 - 4.608e-04*sqft_living - 4.176e-07*sqft_lot + 0.1024*floors2 + 0.2302*floors3$$
+
+### Graphical and statistical tests of assumptions for transformed $model1$ (Residual Analysis)
+
+Lets perform ***Residual Analysis*** using residual plots for $model1$ to check if any of the following model assumptions have been violated. 
+
+  1. Check Linearity and Randomness and zero mean using Residuals vs Fitted plot
+  2. Check normality using Normal Q-Q plot 
+  3. Check Homoscedasticity using Scale-Location plot
+  4. Check for outliers using Residuals vs Leverage
+
+Residual plots:
+
+``` {r}
+par(mfrow=c(2,2))
+plot(model1)
+```
+**1. Residuals vs Fitted**
+
+- Horizontal red line basically at the 0 level, thus mean of residuals/errors is 0. Lets quickly calculate mean of residuals. <br />
+- Residuals spread almost equally around the horizontal line without forming any distinct pattern **indicating linear** relationships. <br />
+- No distinct pattern **indicates randomness** of the residuals. <br />
+
+**2. Normal Q-Q**
+
+- Very few residuals drift off near the tails. All the other points are close to the normal line. Residuals might be normally distributed. Need to perform statistical test.
+
+**3. Scale-Location**
+
+- Change in the spread of residuals is not seen much along the range of predictors indicating homoscedasticity. 
+
+It is difficult to judge the residual’s behavior with certainty from the plots. So, we need to test the assumptions statistically.
+
+**1- Non-constant error variance test** <br />
+
+$H_0$: Errors have a constant variance <br /> 
+$H_1$: Errors have a non-constant variance <br />
+
+```{r}
+ncvTest(model1) #library(car)
+```
+
+Since the p-value is $>$ $0.05$, null hypothesis $H_0$ is true. This implies that constant error variance assumption is **not violated** by the reduced model.
+
+**2- Test for Normally Distributed Errors** <br />
+
+$H_0$: Errors are normally distributed <br /> 
+$H_1$: Errors are not normally distributed <br />
+
+```{r}
+shapiro.test(model1$residuals) # library(stats)
+```
+Since the p-value is < 0.05 we reject $H_0$. This implies that normality error assumption is **violated**.
+
+**3- Test for Autocorrelated Errors** <br />
+  
+$H_0$: Errors are uncorrelated <br /> 
+$H_1$: Errors are correlated <br />
+  
+```{r}
+durbinWatsonTest(model1) # library(car)
+```
+Since the p-value is $>$ $0.05$, so we do not have enough evidence to reject $H_0$. This implies that uncorrelated error assumption is **not violated**.
+
+```{r}
+dwtest(formula = model1,  alternative = "two.sided") #library(lmtest)
+```
+Since the p-value obtained from the Durbin-Watson test is not significant (d = 1.95,p = 0.09649), we reject the null hypothesis. This implies that uncorrelated error assumption is **not violated**.
+
+```{r}
+acf(model1$residuals)
+```
+
+No significant correlated errors at lags are seen. Thus, uncorrelated error assumption is not violated.
+
+**Summarizing residual analysis on $full$ model:**
+
+Assumption 1: The error terms are randomly distributed and thus show linearity: Not violated <br /> 
+Assumption 2: The mean value of E is zero (zero mean residuals): Not violated <br /> 
+Assumption 3: The variance of E is constant, i.e. the errors are homoscedastic: Not violated <br /> 
+Assumption 4: The error terms are independently distributed, i.e. they are not autocorrelated: Not violated <br /> 
+Assumption 5: The errors are normally distributed. ***Violated*** <br /> 
+
+### ANOVA table to assess models overall fit (Significance test for regression)
+
+To assess overall of fit of the model, Lack of fit is checked by assessing the significance of the model (having all 5 predictors) using the Test statistic $F_0$ given by, <br />
+
+$F_0 = \frac{SS_{LOF}/(m-2)}{SS_{PE}/(n-m)} = \frac{MS_{LOF}}{MS_{PE}}$ (i.e, MS of Lack of fit vs pure error )  <br />
+
+Significance test using F-statistic or P-value statistic using ANOVA table will be performed on the regression. Lets state the hypothesis for the significance test, <br />
+  
+Null hypothesis; $H_0$: $\beta_1$ to $\beta_8$ = 0 <br />
+Alternate hypothesis; $H_1$: $\beta_1$ to $\beta_8 \not = 0$. <br />
+
+Lets generate Anova table using anova(), <br />
+
+```{r}
+ANOVA <- anova(model1)
+ANOVA
+```
+We cannot rely on this output as we need to all the regressors together to test significance of regression. We need to sum up the predictors and calculate the p value for them as shown below,
+
+```{r}
+# Manually
+regression<- ANOVA$`Sum Sq`[1]+ ANOVA$`Sum Sq`[2]+ ANOVA$`Sum Sq`[3] + ANOVA$`Sum Sq`[4]+ ANOVA$`Sum Sq`[5]
+Mean_Sq<-regression/(ANOVA$Df[1]+ANOVA$Df[2]+ANOVA$Df[3]+ANOVA$Df[4]+ANOVA$Df[5])
+F_value<-Mean_Sq/ANOVA$`Mean Sq`[6]
+pf(F_value, 8, ANOVA$Df[6], lower.tail = FALSE) # gives p-value: 8.521644e-308 which is < 2.2e-16 given by summary(model1)
+
+# using anova()
+null <- lm(log(price)~1,kc_house) # ANOVA of full model compared with null model gives type 3 anova table for full model 
+anova(null,model1) # p-value same as that from summary()
+```
+Since the p-value (< 2.2e-16) is < 0.05, the F-statistic is significant, implying that the transformed linear regression model **($model1$) is significant**.
+
+Additionally, Anova(type = 3) produces same output as that of the summary() but we do not have the overall model significance ehre. It shows each coefficients significance.
+
+```{r}
+car::Anova(model1, type="III")
+```
+For model1, all 5 predictors and the intercept are significant at 0.05 significance level.
+
+### Significance test for coefficients (Variable selection)
+
+Lets test significance of the predictor coefficients, $\beta_1$ to $\beta_8$ of variables factor(bedrooms)2 , factor(bedrooms)3 ... etc. Also, significance of intercept $\beta_0$ will be checked.
+
+Recall t-values for the coefficients are,
+
+```{r}
+summary(model1)
+```
+
+**For $\beta_1$:**
+  
+For the coefficient $\beta_1$ of ***bedrooms2*** the hypothesis for the test are, <br /> 
+Null hypothesis: $H_0$ : $\beta_1$ = 0  <br /> 
+Alternate hypothesis: $H_a$ : $\beta_1 \not = 0$ <br />
+
+And the Test statistic is:
+
+$t = \frac {\hat{\beta_j} - \beta_j} {se\left(\hat{\beta_j}\right)}$ <br />
+
+We reject $H_0$ if $|t|$ \> $t_{\alpha/2, n-p}$ or by p-value.
+
+The $|t|$-critical for 2 tailed t-test with n-p or n-k-1 DF is **-1.960506**,
+
+```{r}
+qt(p = .025, df = length(kc_house$price) - 8 - 1)
+```
+From the summary(model1), the t-statistic value (1.101) is closer to 0 than the t-critical value (-1.960506), hence the null hypothesis is not rejected. The $H_0$ is true. Thus, the coefficient $\beta_1$ is **insignificant** for the regression at 5% significance level.
+
+**For $\beta_2$ :**
+
+For the coefficient B2 of ***bedrooms3*** the hypothesis for the test are, <br /> 
+Null hypothesis: $H_0$ : $\beta_2$ = 0  <br /> 
+Alternate hypothesis: $H_a$ : $\beta_2 \not = 0$ <br />
+
+The t-statistic value (-3.226) is father from 0 than the t-critical value (-1.960506), hence the null hypothesis is rejected. The $H_a$
+is true and $\beta_3$ is not zero. Thus, the coefficient $\beta_2$ is **significant** for the regression.
+
+**For $\beta_3$ :**
+
+For the coefficient B3 of ***bathrooms2*** the hypothesis for the test are, <br /> 
+Null hypothesis: $H_0$ : $\beta_3$ = 0  <br /> 
+Alternate hypothesis: $H_a$ : $\beta_3 \not = 0$ <br />
+
+The t-statistic value (3.212) is father from 0 than the t-critical value (-1.960506). The coefficient $\beta_3$ is **significant** for the regression.
+
+**For $\beta_4$ :**
+
+For the coefficient B3 of ***bathrooms3*** the hypothesis for the test are, <br /> 
+Null hypothesis: $H_0$ : $\beta_4$ = 0  <br /> 
+Alternate hypothesis: $H_a$ : $\beta_4 \not = 0$ <br />
+
+The t-statistic value (1.639) is closer to 0 than the t-critical value (-1.960506). The coefficient $\beta_3$ is **insignificant** for the regression.
+
+**For $\beta_5$ :**
+
+For the coefficient B5 of ***sqft_living*** the hypothesis for the test are, <br /> 
+Null hypothesis: $H_0$ : $\beta_5$ = 0  <br /> 
+Alternate hypothesis: $H_a$ : $\beta_5 \not = 0$ <br />
+
+The t-statistic value (27.885) is father from 0 than the t-critical value (-1.960506). The coefficient $\beta_5$ is **significant** for the regression.
+
+**For $\beta_6$ :**
+
+For the coefficient B6 of ***sqft_lot*** the hypothesis for the test are, <br /> 
+Null hypothesis: $H_0$ : $\beta_6$ = 0  <br /> 
+Alternate hypothesis: $H_a$ : $\beta_6 \not = 0$ <br />
+
+The t-statistic value (-2.649) is father from 0 than the t-critical value (-1.960506). The coefficient $\beta_6$ is **significant** for the regression.
+
+**For $\beta_7$ :**
+
+For the coefficient B7 of ***floors2*** the hypothesis for the test are, <br /> 
+Null hypothesis: $H_0$ : $\beta_7$ = 0  <br /> 
+Alternate hypothesis: $H_a$ : $\beta_7 \not = 0$ <br />
+
+The t-statistic value (4.480) is father from 0 than the t-critical value (-1.960506). The coefficient $\beta_7$ is **significant** for the regression.
+
+**For $\beta_8$ :**
+
+For the coefficient B8 of ***floors3*** the hypothesis for the test are, <br /> 
+Null hypothesis: $H_0$ : $\beta_8$ = 0  <br /> 
+Alternate hypothesis: $H_a$ : $\beta_8 \not = 0$ <br />
+
+The t-statistic value (4.880) is father from 0 than the t-critical value (-1.960506). The coefficient $\beta_8$ is **significant** for the regression.
+
+#### Significance test for Intercept
+
+For the intercept B0 the hypothesis for the test are, <br /> 
+Null hypothesis: $H_0$ : $\beta_0$ = 0  <br /> 
+Alternate hypothesis: $H_a$ : $\beta_0 \not = 0$ <br />
+
+The t-statistic value (334.700) is farther from 0 than the t-critical value (-1.960506), hence intercept is **significant** at 5% level. 
+
+### Model equation and Interpretation
+
+Fitted model equation is, 
+
+$\hat y$ = $\beta_0$ + $\beta_1$x1 + $\beta_2$x2 + $\beta_3$x3 + $\beta_4$x4 + $\beta_5$x5 + $\beta_6$x6 + $\beta_7$x7 + $\beta_8$x8 + $\varepsilon$, i.e,
+
+$$log(\hat y)= 12.14 + 0.0389*bedrooms2 - 0.1155*bedrooms3 + 0.0528*bathrooms2 + 0.064*bathrooms3 - 4.608e-04*sqft_living - 4.176e-07*sqft_lot + 0.1024*floors2 + 0.2302*floors3 + \varepsilon$$
+$$or$$
+$$E(log(\hat y))= 12.14 + 0.0389*bedrooms2 - 0.1155*bedrooms3 + 0.0528*bathrooms2 + 0.064*bathrooms3 - 4.608e-04*sqft_living - 4.176e-07*sqft_lot + 0.1024*floors2 + 0.2302*floors3$$
+
+Where the coefficients are interpreted as, <br />
+
+$B_0$ (12.14) :- <br />
+
+When sqft_living & sqft_lot are fixed and factors bedrooms, bathrooms and floors are fixed (bedrooms2 & bedrooms3 set to 0 (representing 1st bedroom of the house), bathrooms2 & bathrooms3 set to 0 (representing 1st bathroom of the house), floors2 & floors3 set to 0 (representing 1st floor of the house) in the model equation), the mean of log(price) is equal to $B_0$. <br />
+
+$B_1$ (0.0389) :- <br />
+
+when sqft_living, sqft_lot, bathrooms, floors and bedrooms is set to 2 (bedrooms3 is fixed), then the mean of log(price) is increased by $B_1$ <br />
+
+In similar fashion, $B_2$ to $B_8$ can be interpreted. <br />
+
+when we remove insignificant predictors $\beta_1$ and $\beta_4$, the equation becomes, <br />
+$$log(\hat y)= 12.14 - 0.1155*bedrooms3 + 0.0528*bathrooms2 - 4.608e-04*sqft_living - 4.176e-07*sqft_lot + 0.1024*floors2 + 0.2302*floors3 + \varepsilon$$
+
+### Compare transformed and base model
+
+- $full$ model **violates normality and homoscedasticity**. Transformed model $model1$ **violates normality**. Hence, the coefficient estimates of transformed model are more accurate. <br />
+- **28.19%** variation in response price is explained by $model1$ compared to 33.38% by $full$ model. <br />
+
+**Using press statistic-**
+```{r}
+DAAG::press(model1)
+DAAG::press(full)
+```
+
+since, press statistic is smaller for log transformed model1 predictive ability is better for model1 than full model. Thus, fit is better for model1. **Model1 is better.**
+
+
+## Model 2 (Logistic model) 
+
+A logistic regression model is fit when the response variable forms a binomial distribution of success (1) and failure (0). This transformed responses, success and failures, are called logits and the regression is called logistic regression. The (log of) Odds of success is then represented as a linear regression, hence a Generalized Linear Model (GLM). The data for the logistic model needs to be in matrix form. <br />
+
+In context to our kc_house data, the Response variable is defined as the the Odds of success where **success is, getting a lower priced house**. We create a matrix for our response having **SUCCESSES (LowPrice)** and **FAILURES (HighPrice)**. The response is categorical variable here. The predictors, ***bedrooms***, ***bathrooms***, and ***floors*** remain categorical. And ***sqft_living*** and ***sqft_lot*** remain continuous. <br />
+
+The following set of codes derives the data in matrix form for logistic regression, <br />
+
+```{r}
+# Create threshold using median 
+median(kc_house$price) # 333,000
+
+# Flag high price and low price using median as threshold
+kc_house_flag <- kc_house %>% mutate(HighPrice = ifelse(price > 333000, 1, 0),
+                                     LowPrice = ifelse(price < 333000, 1, 0))
+
+# Count LowPrice and HighPrice at the group level of bedrooms x bathrooms x floors. 
+a <- aggregate(cbind(LowPrice,HighPrice) ~ bedrooms + bathrooms + floors, data = kc_house_flag, FUN = sum, na.rm = TRUE)
+
+# Take mean of sqft_living and sqft_lot 
+b <- aggregate(cbind(sqft_living, sqft_lot) ~ bedrooms + bathrooms + floors, data = kc_house_flag, FUN = mean, na.rm = TRUE)
+c <- merge(a, b)
+
+# Reorder columns
+kc_house_logistic <- c[,c(4,5,1,2,3,6,7)]
+kc_house_logistic
+```
+
+**Note-** Sqft_living and sqft_lot are averages aggregated at bedrooms x bathrooms x floors level. <br />
+
+
+### Fit logistic regression model, $model2$
+
+The logistic regression model for the binomially distributed response, odds of getting lower priced house which is generalized as a linear model is fit using the glm() by passing the success and failures of the response as shown below, 
+
+```{r}
+model2 <- glm(cbind(LowPrice, HighPrice) ~ factor(bedrooms) + factor(bathrooms) + factor(floors) + sqft_living + sqft_lot, family=binomial, kc_house_logistic)
+summary.glm(model2)
+```
+Summary() gives us the AIC score which we can use to compare models. We notice many insignificant predictors. First, lets check if this model is significant or not.
+
+### Check Adequacy of logistic model (Tests of assumptions)
+
+Adequacy of logistic regression model can be checked by testing the significance of the logistic model using **Deviance** which is a goodness of fit test based on chi-square statistic. Other methods are Pearson and Hosmer-Lemeshow. <br />
+
+Unlike simple linear models, residual analysis cant be performed as, <br />
+1. The error terms take on only two values, so they can’t possibly be normally distributed <br />
+2. The variance of the observations is a function of the mean (see previous slide) <br />
+3. A linear response function could result in predicted values that fall outside the 0, 1 range, and this is impossible because $0<E(y_i) = \mu_i \le 1$ <br />
+
+The Adequacy of the logistic regression model is checked by testing the goodness of fit using the **Deviance**. 
+
+The hypothesis when using Deviance are, <br />
+
+$H_0$: The model fits the data well. <br />
+$H_1$: The model does not fit the data well. <br />
+
+```{r}
+# Calculate deviance of logistic model
+deviance(model2)
+
+# Gives the p value for the goodness of fit test
+pchisq(model2$deviance, df=model2$df.residual, lower.tail=FALSE) # model2$df.residual = 12
+```
+
+The chi-square test statistic of 29.98885 with 12 degree of freedom gives a p-value of 0.002803238, indicating that the null hypothesis is not plausible. Hence, $model2$ **logistic model is insignificant**. 
+
+
+### Check which predictors are significant (Variable selection) 
+
+We want to check if a reduced model is plausible. Individual tests on the predictor variables helps us determine which variables can be removed.
+
+Tests on individual model coefficients can also be done using Wald inference. The MLEs have an approximate normal distribution, so the distribution of $Z_0$, <br />
+$$Z_0 = \frac{\hat \beta}{se(\hat \beta)}$$ <br />
+is standard normal if the true value of the parameter is zero. We can either report square of Z which is chi-square (displayed by summary()). Or, we can calculate p-value using the chi-square statistic.
+
+The Type 3 Anova() for categorical response (odds of getting lower priced house) and categorical and continuous predictors gives a Chi-Square statistic which is assessed using p-value. (Note: A t-test can also be used as both independent(predictor) and dependent (response) variables are categorical) ** Add reference
+
+A t-test on the model parameters/ predictors will indicate which of the predictors have a significant effect on the odds of getting lower priced house (response). T-test using anova table is,
+
+```{r}
+car::Anova(model2, type="III") # library(car) 
+```
+Based on ANOVA table, **Bathrooms** and **sqft_lot** could be **removed** as they are not significant at 5% level.
+
+### Fit reduced model, $reducedmodel2$
+
+Lets fit the reduced model with **bedrooms**, **floors** and **floors** predictors,
+
+```{r}
+reducedmodel2 <- glm(cbind(LowPrice, HighPrice) ~ factor(bedrooms) + factor(floors) + floors , family=binomial, kc_house_logistic)
+summary.glm(reducedmodel2)
+```
+Note the AIC score for model comparison.
+
+### Check Adequacy of reduced logistic model (Tests of assumptions)
+
+The hypothesis when using Deviance are, <br />
+
+$H_0$: The model fits the data well. <br />
+$H_1$: The model does not fit the data well. <br />
+
+```{r}
+deviance(reducedmodel2)
+pchisq(reducedmodel2$deviance, df=reducedmodel2$df.residual, lower.tail=FALSE) # reducedmodel2$df.residual = 15
+```
+
+The chi-square test statistic of 31.02393 with 15 degree of freedom gives a p-value of 0.002803238, indicating that the null hypothesis is not plausible. Hence, $reducedmodel2$ **reduced logistic model is insignificant**.
+
+### Explore Interactions (Model selection)
+
+Although multicollinearity check in the beginning didn't give any significant correlation between the predictors, in context with our House Sales data, we know number of bedrooms, floors and size of living predictors are related to each other. When predictors are expected to be related, interactions between these predictors can be added to the regression model.
+
+### Fit interaction based models
+
+Since the reduced model has 3 predictors, adding an interaction to the reduced model can be done in $^3C_2$ = 3 combinations. Lets fit each of these interaction based models.
+
+```{r}
+# Fit models
+reducedmodel2a <- glm(cbind(LowPrice, HighPrice) ~ factor(bedrooms)  + factor(floors) + sqft_living + factor(bedrooms)*factor(floors), family=binomial, kc_house_logistic) # ONLY SIGNIFICANT MODEL
+
+reducedmodel2b <- glm(cbind(LowPrice, HighPrice) ~ factor(bedrooms)  + factor(floors) + sqft_living + factor(bedrooms)*sqft_living, family=binomial, kc_house_logistic)
+
+reducedmodel2c <- glm(cbind(LowPrice, HighPrice) ~ factor(bedrooms)  + factor(floors) + sqft_living + factor(floors)*sqft_living, family=binomial, kc_house_logistic)
+```
+
+### Check adequacy of interaction based models
+
+Again, the hypothesis when using Deviance are, <br />
+
+$H_0$: The model fits the data well. <br />
+$H_1$: The model does not fit the data well. <br />
+
+```{r}
+# Check model adequacies
+deviance(reducedmodel2a)
+print(paste(pchisq(reducedmodel2a$deviance, df=reducedmodel2a$df.residual, lower.tail=FALSE), "Significant!!"))# reducedmodel2a$df.residual = 12
+
+deviance(reducedmodel2b)
+pchisq(reducedmodel2b$deviance, df=reducedmodel2b$df.residual, lower.tail=FALSE) # reducedmodel2b$df.residual = 13
+
+deviance(reducedmodel2c)
+pchisq(reducedmodel2c$deviance, df=reducedmodel2c$df.residual, lower.tail=FALSE) # reducedmodel2c$df.residual = 13
+```
+
+We found a significant logistic regression model! The reduced model $reducedmodel2a$ with interaction term **bedrooms x floors** and the other 3 predictors, bedrooms, floors and sqft_living has the chi-square test statistic of 20.59735 with 12 degree of freedom gives a p-value of 0.056, indicating that the null hypothesis is true. Hence, this **$reducedmodel2a$ logistic model is Significant**. 
+
+Lets look at the summary(),
+
+```{r}
+summary(reducedmodel2a)
+```
+Note AIC score.
+
+### Check which predictors are significant (Variable selection) 
+
+T-test using anova table for each predictor shows,
+
+```{r, error=TRUE}
+car::Anova(reducedmodel2a, type="III") # library(car) 
+```
+
+Lets use a manual approach. Using anova(), get the Deviance for each predictor and use pchisq() to get p-values,
+
+where,
+
+$H_0$: $\beta_i = 0$
+$H_a$: $\beta_i \not = 0$ 
+
+```{r}
+anova(reducedmodel2a)
+```
+using the Deviance values above, p-values for the significance of the predictors are,
+
+```{r}
+pchisq(11.164, df=2, lower.tail=FALSE) # For bedrooms
+pchisq(198.473, df=2, lower.tail=FALSE) # For floors
+pchisq(188.640, df=1, lower.tail=FALSE) # For sqft_living
+pchisq(10.427, df=3, lower.tail=FALSE) # For bedrooms x floors
+```
+
+
+**Equation of Reduced model with interaction:**
+
+Let - $p$ be probability of success, i.e, probability of getting high price. Based on the output of R, the fitted model equation is: <br />
+
+$$p= \frac{e^{2.226 + 0.737  \hspace{0.1 cm} bedrooms3 - 2.53  \hspace{0.1 cm} floors3  - 0.00197  \hspace{0.1 cm} sqft_living + 1.79  \hspace{0.1 cm} bedrooms2*floors3}}{1+e^{2.226 + 0.737  \hspace{0.1 cm} bedrooms3 - 2.53  \hspace{0.1 cm} floors3  - 0.00197  \hspace{0.1 cm} sqft_living + 1.79  \hspace{0.1 cm} bedrooms2*floors3}}$$
+
+Or can be written as, <br />
+
+$$p=\frac{1}{1+e^{-2.226 - 0.737  \hspace{0.1 cm} bedrooms3 + 2.53  \hspace{0.1 cm} floors3  + 0.00197  \hspace{0.1 cm} sqft_living - 1.79  \hspace{0.1 cm} bedrooms2*floors3}}$$ <br />
+
+Another way; <br />
+
+$$log(\frac{p}{1-p})= -2.226 - 0.737  \hspace{0.1 cm} bedrooms3 + 2.53  \hspace{0.1 cm} floors3  + 0.00197  \hspace{0.1 cm} sqft_living - 1.79  \hspace{0.1 cm} bedrooms2*floors3$$
+
+Where the coefficients are interpreted as, <br />
+
+$B_0$ (-2.29) :- <br /> 
+
+When sqft_living & sqft_lot are fixed and factors bedrooms, bathrooms and floors are fixed (bedrooms2 & bedrooms3 set to 0 (representing 1st bedroom of the house), bathrooms2 & bathrooms3 set to 0 (representing 1st bathroom of the house), floors2 & floors3 set to 0 (representing 1st floor of the house) in the model equation), the odds of success (getting lower priced house) is equal to exp($B_0$), i.e, exp(-2.29). <br />
+
+$B_1$ (0.063) :- <br />
+
+when sqft_living, sqft_lot, bathrooms, floors and bedrooms is set to 2 (bedrooms3 is fixed), then the odds of getting lower priced house is increased by exp($B_1$), i.e, exp(0.063). <br />
+
+similarly, $B_2$ to $B_8$ can be defined. <br />
+
+**Interpretation:** One unit increase in the sqft_living will decrease the odds of getting lower priced house by exp(-0.002058339) = 0.99 times when all the other variables are fixed.
+
+### Compare logistic models
+
+- $model2$ and $reducedmodel2$ fail the significance tests. $reducedmodel2a$ passes the significance test.
+- $reducedmodel2a$ (107.77) has the best (lowest) AIC score compared to $model2$ (117.16) and $reducedmodel2$ (112.2). 
+
+**Using press statistic**
+
+```{r}
+DAAG::press(model2)
+DAAG::press(reducedmodel2)
+DAAG::press(reducedmodel2a) 
+```
+
+Although $reducedmodel2a$ fits the data well (significant model), it is not better at prediction as press statistics for $model2$ and $reducedmodel2$ are lower. (Lower PRESS value indicates better prediction)
+
+## Model 3 (Poisson model)
+
+A poisson regression model is used to model counts with the intention to model the main parameter $\lambda$, the average number of occurrences per unit of time or space, as a function of one or more covariates. Log transformation are used by default since $\lambda_i$ can only take on values from $0$ to $\infty$. 
+
+In context with kc_house data, the Response variable is defined as the count per price range. Averages of the 5 regressors aggregated at the bucket level can be taken as the predictors.
+
+The data for the poisson regression is derived as shown below,
+
+```{r}
+# Divide the response, price into 6 buckets. One-sixth of the mean(kc_house$price) is used.
+onesixth <- mean(kc_house$price)/3
+
+# Create 6 price ranges 
+kc_house_poisson_flag <- kc_house %>% mutate(range = ifelse(price >= min(kc_house$price) & price <= onesixth, 1, 
+                                                           ifelse(price > onesixth & price <= onesixth*2, 2, 
+                                                                  ifelse(price > onesixth*2 & price <= onesixth*3, 3, 
+                                                                         ifelse(price > onesixth*3 & price <= onesixth*4, 4,
+                                                                                ifelse(price > onesixth*4 & price <= onesixth*5, 5,
+                                                                                       ifelse(price > onesixth*5 & price <= max(kc_house$price), 6, 0)))))))
+
+# Aggregate the 5 predictors and merge into a final dataframe 
+aa <- kc_house_poisson_flag %>% group_by(range) %>% summarise(range_count = n())
+bb <- aggregate(cbind(bedrooms, bathrooms, floors) ~ range, data = kc_house_poisson_flag, FUN = mean, na.rm = TRUE) %>% round()
+cc <- aggregate(cbind(sqft_living, sqft_lot) ~ range, data = kc_house_poisson_flag, FUN = mean, na.rm = TRUE) %>% round()
+dd <- merge(merge(aa, bb), cc)
+
+# Provide row names for ranges
+rownames(dd) <- c("Range 78000 to 123810","Range 123810 to 247620","Range 247620 to 371430","Range 371430 to 495241","Range 495241 to 619051","Range 371430 to 3100000")
+
+# reorder columns
+kc_house_poisson <- dd[,c(2,3,4,5,6,7)]
+kc_house_poisson
+```
+
+### Fit poisson model, $model3$
+
+The poisson regression model for the response, Count per price range which is generalized as a linear model is fit using the glm() as,
+
+```{r}
+model3 <- glm(range_count ~ bedrooms + bathrooms + floors + sqft_living + sqft_lot, family = poisson(link = "log"), kc_house_poisson)
+summary.glm(model3)
+```
+Note AIC score.
+
+### Check Adequacy of poisson model (Tests of assumptions)
+
+The Adequacy of the logistic regression model is checked by testing the goodness of fit using the **Deviance**. 
+
+The hypothesis when using Deviance are, <br />
+
+$H_0$: The model fits the data well. <br />
+$H_1$: The model does not fit the data well. <br />
+
+```{r}
+deviance(model3)
+pchisq(model3$deviance, df=model3$df.residual, lower.tail=FALSE) # model3$df.residual = 1
+```
+The chi-square test statistic of 67.66024 with 1 degree of freedom gives a p-value of 1.942412e-16, indicating that the null hypothesis is not plausible. Hence, the **poisson model is not significant**.
+
+Lets fit a different model.
+
+## Model 4 (GLM model with log transformed gamma distributed response)
+
+A Generalized Linear Models (GLMs) with gamma distributed response is used when the distribution of the response variable is continuous and positively skewed. In such case as the response variable is not normally distributed, a GLM model is achieved by log transformation of the response. Thus, it can stated, the mean of the response variable is related to the predictor variables through a log link function. 
+
+In context of our kc_house data, response, ***price*** is right skewed as shown by the histogram below,
+
+```{r}
+hist(kc_house$price)
+```
+Hence, a log link transformation will be used.
+
+### Fit GLM model, $model4$
+
+Lets fit the Generalized Linear Model for ***price*** response following gamma distribution using glm() with log link transformation,
+
+```{r}
+model4 <- glm(price~factor(bedrooms)+factor(bathrooms)+factor(floors)+sqft_living+sqft_lot,
+            family=Gamma(link="log"),kc_house)
+summary.glm(model4)
+```
+
+Bathroom predictor is insignificant.
+
+### Variable selection
+
+A t-test on the model parameters/ predictors will indicate which of the predictors have a significant effect on the response. T-test using anova table is,
+
+```{r}
+Anova(model4,type = 3)
+```
+We can remove ***bathroom*** predictor from the model as it is not significant at 5% significance level.
+
+### Fit reduced model
+
+Lets fit a reduced model by removing bathroom predictor,
+
+```{r}
+reducedmodel4 <- glm(price~factor(bedrooms)+factor(floors)+sqft_living+sqft_lot,
+                   family=Gamma(link="log"),kc_house)
+summary.glm(reducedmodel4)
+```
+Note AIC score.
+
+### Model selection
+
+**Using p-value:**
+
+```{r}
+anova(model4,reducedmodel4, test="Chi")
+```
+
+p-value (0.14) > 0.05, hence $Model4$ is better.
+
+**Using AIC scores:**
+- Both $reducedmodel4$ and $model4$ have same AIC scores.
+
+As per anova table's p-value test, $Model4$ is better.
+
+### Check Adequacy of fitted GLM model (Tests of assumptions)
+
+The Adequacy of the logistic regression model is checked by testing the goodness of fit using the Deviance.
+
+The hypothesis when using Deviance are,
+
+$H_0$: The model fits the data well.
+$H_1$: The model does not fit the data well.
+
+```{r}
+deviance(model4)
+pchisq(model4$deviance, df=model4$df.residual, lower.tail=FALSE) # model4$df.residual = 4376
+```
+
+The chi-square test statistic of 640.3131 with 4376 degree of freedom gives a p-value of 1, indicating that the null hypothesis is plausible. Hence, this **GLM model with log transformed gamma distributed response is significant**.
+
+
+## Detailed conclusion on the most appropriate model including context
+
+Lets summarize the 4 finalized models
+
+**Model 1 - Linear Regression Model:**
+
+- Model name - $model1$
+- Is regression significant? - Yes
+- Response - Log transformed price of house sold, log(price)
+- Predictors - All 5 predictors. 3 categorical (bedrooms, bathrooms and floors) of 3 levels each. 2 Continuous, sqft_living and sqft_lot.
+- Fitted model - lm(log(price) ~ factor(bedrooms) + factor(bathrooms) + sqft_living + sqft_lot + factor(floors), data=kc_house).
+- Model equation - $log(\hat y)= 12.14 + 0.0389*bedrooms2 - 0.1155*bedrooms3 + 0.0528*bathrooms2 + 0.064*bathrooms3 - 4.608e-04*sqft_living - 4.176e-07*sqft_lot + 0.1024*floors2 + 0.2302*floors3 + \varepsilon$
+- Significance of coefficients - All 5 coefficients and Intercept are significant.
+- Assumptions violated: Normality assumption of errors/residuals was violated. All other assumptions were satisfied.
+
+
+**Model 2 - Logistic Regression Model:**
+
+- Model name - $reducedmodel2a$
+- Is regression significant? - Yes
+- Response - Odds of getting low priced house
+- Predictors - 3 predictors. 2 categorical (bedrooms and floors) of 3 levels each. 1 Continuous, sqft_living.
+- Fitted model - glm(cbind(LowPrice, HighPrice) ~ factor(bedrooms)  + factor(floors) + sqft_living + factor(bedrooms)*factor(floors), family=binomial, kc_house_logistic)
+- Model equation - $log(\frac{p}{1-p})= -2.226 - 0.737  \hspace{0.1 cm} bedrooms3 + 2.53  \hspace{0.1 cm} floors3  + 0.00197  \hspace{0.1 cm} sqft_living - 1.79  \hspace{0.1 cm} bedrooms2*floors3$
+- Significance of coefficients - All 3 coefficients and Intercept are significant.
+- Assumptions violated: None
+
+
+**Model 3 - Poisson Regression Model:**
+
+- Model name - $model3$
+- Is regression significant? - **No**
+- Response - Count per price range
+- Predictors - All 5 predictors.
+- Fitted model - glm(range_count ~ bedrooms + bathrooms + floors + sqft_living + sqft_lot, family = poisson(link = "log"), kc_house_poisson)
+
+
+**Model 4 - GLM Regression Model with gamma distributed response:**
+
+- Model name - $model4$
+- Is regression significant? - Yes
+- Response - gamma distributed price with log link
+- Predictors - All 5 predictors.
+- Fitted model - glm(price~factor(bedrooms)+factor(bathrooms)+factor(floors)+sqft_living+sqft_lot, family=Gamma(link="log"),kc_house)
+- Significance of coefficients - bathrooms predictor is insignificant. Other 4 predictors are significant and Intercept are significant.
+- Assumptions violated: None
+
+From this summary, the Poisson regression model $model3$ is insignificant and does not fit our House Sales data. So it can be rejected.
+
+Coming to the remaining 3 models. Linear regression model $Model1$ has a log-transformed response, logistic regression model $reducedmodel2a$ has a Odds ratio response, and GLM model with gamma distributed response $model4$ has a generalized response with gamma distribution. Hence, no statistical tests can be done to compare these models. 
+
+Fitting $reducedmodel2a$ feels forceful as our response (price) was not in the ideal format of successes and failures. Also, recall we had to take mean of sqft_living predictor which is a crude way of creating data. For these reasons, a logistic model, although significant, does not feel the best choice of model. 
+
+Choosing between $model1$ and $model4$ is difficult, but with the context of House Sales data in mind, a GLM model with gamma distribution seems most apt as the response (price) had a right skewed distribution. Also, recall, Normality assumption of errors/residuals was violated by $model1$. 
+
+## Final Analysis Conclusion
+
+Using multiple model and variable selections, 3 significant models finalized, each with different response types. A GLM regression model having log link for the gamma distributed response was chosen best fitting in context with the data in hand (response was right skewed). The model is significant based on the Deviance statistic with a p-value of 1. Although, number of bathrooms predictor is insignificant, the full model $model1$ is better with this insignificant parameter than the reduced model as per significance test between these models (p-value = 0.1467 in favor of full model).
+
+
+## References
+
+Kaggle (2016) *House Sales in King County, USA. Predict house price using regression*, Kaggle website, accessed 25th May 2023. https://www.kaggle.com/datasets/harlfoxem/housesalesprediction
+
+GeoDa (2020) *2014-15 Home Sales in King County, WA*, Geodacenter github website, accessed 2nd June 2023. https://geodacenter.github.io/data-and-lab//KingCounty-HouseSales2015/
+
+GIS (2023) *Zipcodes for King County and Surrounding Area (Shorelines) / zipcode shore area*, GIS website, accessed 2nd June 2023. https://gis-kingcounty.opendata.arcgis.com/datasets/zipcodes-for-king-county-and-surrounding-area-shorelines-zipcode-shore-area/explore
+
+CSDS (2020) *The center for spatial data science. The university of Chicago*, Univeristy of Chicago website, accessed 2nd June 2023. https://spatial.uchicago.edu/
+
+
